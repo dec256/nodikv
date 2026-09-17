@@ -2,6 +2,9 @@
 
 ### distributed key value database
 
+> [!WARNING]
+> This is currently a work in progress
+
 #### current commands include:
     PULL! => to grab data from a key
     ADD! => to dynamically add a node to the cluster
@@ -9,3 +12,4 @@
     CAST! => to ask nodes in the cluser for votes
     ELECTED! => leader announces when they are elected and nodes check
     VOTE! => vote for a cast member to be leader
+
