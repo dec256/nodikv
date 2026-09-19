@@ -7,6 +7,7 @@
 
 #### current commands include:
   PULL => `PULL key` -> returns the value under that key
+  
   PUSH => `PUSH key value` -> puts that value under that key
 
 > [!WARNING]
