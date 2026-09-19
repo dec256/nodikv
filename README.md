@@ -6,10 +6,9 @@
 > This is currently a work in progress
 
 #### current commands include:
-    PULL! => to grab data from a key
-    ADD! => to dynamically add a node to the cluster
-    PUSH! => to add data to a key
-    CAST! => to ask nodes in the cluser for votes
-    ELECTED! => leader announces when they are elected and nodes check
-    VOTE! => vote for a cast member to be leader
+  PULL => `PULL key` -> returns the value under that key
+  PUSH => `PUSH key value` -> puts that value under that key
+
+> !WARNING
+> keys and values CANNOT have colons (':') in them
 
