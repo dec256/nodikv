@@ -11,5 +11,5 @@
   PUSH => `PUSH key value` -> puts that value under that key
 
 > [!WARNING]
-> keys and values CANNOT have colons (':') in them
+> keys and values CANNOT have colons (`:`) in them
 
