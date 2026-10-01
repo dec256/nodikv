@@ -1,90 +1,37 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::{
-    net::{TcpListener, TcpStream},
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
-};
-use anyhow::Result;
-use chrono::{Utc, Timelike};
-
-const ADDRESS: &str = "127.0.0.1:8081";
-
-enum States {
-    Follower,
-    Candidate,
-    Leader,
-}
-
-type Db = Arc<Mutex<HashMap<String, String>>>;
+use futures_util::{StreamExt, TryStreamExt, future};
+use tokio::net::TcpListener;
+use tokio_stream::wrappers::TcpListenerStream;
+use tokio_tungstenite::accept_async;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let _ = tokio::spawn(raft()).await?;
-    let listener = TcpListener::bind("0.0.0.0:80").await?;
-    let db: Db = Arc::new(Mutex::new(HashMap::new()));
-    
-    loop {
-        let (mut socket, addr) = listener.accept().await?;
-        println!("\nconnection from {}", addr);
+async fn main() {
+    let listener = TcpListener::bind("127.0.0.1:9001").await.unwrap();
+    println!("Listening on ws://127.0.0.1:9001");
 
-        let db = Arc::clone(&db);
-        tokio::spawn(async move {
-            let mut buf = Vec::new();
-            if let Err(e) = socket.read_to_end(&mut buf).await {
-                eprintln!("failed to read from socket: {}", e);
-                return;
+    TcpListenerStream::new(listener)
+        .for_each_concurrent(None, |conn| async move {
+            match conn {
+                Ok(stream) => handle_connection(stream).await,
+                Err(e) => eprintln!("accept error: {e}"),
             }
-
-            let data = String::from_utf8_lossy(&buf);
-            if let Err(e) = parse(data.to_string(), socket, db).await {
-                eprintln!("error processing request: {}", e);
-            }
-        });
-    }
+        })
+        .await;
 }
 
-async fn parse(data: String, mut stream: TcpStream, db: Db) -> Result<()> {
-    println!("{}", data);
-    if data.contains("PUSH") {
-        let lines: Vec<&str> = data.split_whitespace().collect();
-        if lines.len() != 3 {
-            return Err(anyhow::anyhow!("does not contain all 3 PUSH key val"));
-        }
-        push(&db, lines[1], lines[2]).await;
-        println!("PUSHED");
-    } else if data.contains("PULL") {
-        let lines: Vec<&str> = data.split_whitespace().collect();
-        if lines.len() != 2 {
-            return Err(anyhow::anyhow!("does not contain all PULL key"));
-        }
-        let value = pull(&db, lines[1]).await;
-        stream.write_all(value.as_bytes()).await?;
-        println!("{}", value);
+async fn handle_connection(stream: tokio::net::TcpStream) {
+    let ws_stream = match accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(e) => return eprintln!("handshake failed: {e}"),
+    };
+
+    let (write, read) = ws_stream.split();
+
+    let echo = read
+        .try_filter(|msg| future::ready(msg.is_text() || msg.is_binary()))
+        .inspect_ok(|msg| println!("Received: {msg}"))
+        .forward(write);
+
+    if let Err(e) = echo.await {
+        eprintln!("echo stream error: {e}");
     }
-
-    Ok(())
-}
-
-async fn push(db: &Db, key: &str, val: &str) {
-    let mut db = db.lock().await;
-    db.insert(key.to_string(), val.to_string());
-}
-
-async fn pull(db: &Db, key: &str) -> String {
-    println!("this is the data for {}", key);
-    let db = db.lock().await;
-    db.get(key).cloned().unwrap_or_default()
-}       
-
-async fn raft() -> Result<()> {
-    let mut current = States::Follower;
-    let listener = TcpListener::bind(ADDRESS).await?;
-    loop {
-        let now = Utc::now();
-        let secs = now.num_seconds_from_midnight();
-        //let secs = (seconds_since_midnight + 5) % 86400;
-        println!("{}", secs);
-    }
-    Ok(())
 }

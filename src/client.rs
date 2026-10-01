@@ -1,53 +1,30 @@
-use tokio::{
-    net::{TcpStream},
-    io::{AsyncWriteExt, AsyncReadExt},
-};
-
-use std::{
-    io::{Write},
-};
-
-use anyhow::Result;
-
-const SEND_ADDRESS: &str = "127.0.0.1:8080";
-
-fn input(data: &str)-> Result<String> {
-    let mut to_send = String::new();
-    print!("{}", &data);
-    std::io::stdout().flush()?;
-    std::io::stdin().read_line(&mut to_send)?;
-
-    Ok(to_send)
-}
+use futures_util::{StreamExt, TryStreamExt, future};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_stream::wrappers::LinesStream;
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message;
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    loop{
-        let mut socket = TcpStream::connect(SEND_ADDRESS).await?;
+async fn main() {
+    let (ws_stream, _response) = connect_async("ws://127.0.0.1:9001")
+        .await
+        .expect("connect failed");
 
-        let to_send = String::from(input("data: ")?);
+    let (write, read) = ws_stream.split();
 
-        if to_send.trim().to_lowercase() == "end" {
-            break;
-        }
-        if !to_send.trim().contains("PUSH") && !to_send.trim().contains("PULL") {
-            println!("its either PULL or PUSH");
-            continue;
-        }
-    
-        socket.write_all(to_send.as_bytes()).await?;
-        socket.shutdown().await?;  
+    let stdin_to_ws = LinesStream::new(BufReader::new(tokio::io::stdin()).lines())
+        .map_ok(|line| Message::Text(line.into()))
+        .err_into()
+        .forward(write);
 
-        if to_send.trim().contains("PULL") {
-            let mut data: Vec<u8> = Vec::new();
-            let mut buf = [0u8; 4096];
-            loop {
-                let n = socket.read(&mut buf).await?;
-                if n == 0 { break; }
-                data.extend_from_slice(&buf[..n]);
-            }
-            println!("{}", String::from_utf8_lossy(&data));
-        }
+    let ws_to_stdout = read
+        .try_filter_map(|msg| future::ready(Ok(msg.into_text().ok())))
+        .try_for_each(|text| async move {
+            println!("{text}");
+            Ok(())
+        });
+
+    if let Err(e) = future::try_join(stdin_to_ws, ws_to_stdout).await {
+        eprintln!("error: {e}");
     }
-    Ok(())
 }

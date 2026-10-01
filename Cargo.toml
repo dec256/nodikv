@@ -13,5 +13,8 @@ path = "src/client.rs"
 
 [dependencies]
 anyhow = "1.0.104"
-chrono = "0.4.45"
+futures-util = "0.3.34"
+rustls = "0.23.45"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots"] }
+tokio-stream = { version = "0.1", features = ["net", "io-util"] }
